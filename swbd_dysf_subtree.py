@@ -102,8 +102,43 @@ def count_rules(input_file, output_file):
     # save to file
     pickle.dump(count_dict, open(output_file, 'wb'))
 
+# reformat the count results so that it is readable in R
+def reformat_count_result(input_file, output_file):
+    assert isinstance(input_file, str)
+    assert isinstance(output_file, str)
+    # load
+    count = pickle.load(open(input_file, 'rb'))
+    # write
+    with open(output_file, 'w') as fw:
+        for key, val in count.items():
+            fw.write(key + ', ' + str(val) + '\n')
+
+# process all parsedFull entries and extract subrules for each
+def extract_subrules_all():
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # select all data
+    sql = 'select convID, globalID, parsedFull from entropy_disf'
+    cur.execute(sql)
+    data = cur.fetchall()
+    # process each row
+    for i, row in enumerate(data):
+        c_id, g_id, parsed_str = row
+        rules = subrules(parsed_str)
+        rules_str = '~~~+~~~'.join(rules)
+        # update
+        sql = 'update entropy_disf set subRules = %s where convID = %s and globalID = %s'
+        cur.execute(sql, (rules_str, c_id, g_id))
+        # print
+        sys.stdout.write('\r{}/{} row processed and updated'.format(i+1, len(data)))
+        sys.stdout.flush()
+    conn.commit()
+
 
 # main
 if __name__ == '__main__':
     # find_adj_pairs('swbd_dysf_adjacent_pairs.pkl')
-    count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
+    # count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
+    # reformat_count_result('swbd_dysf_adjacent_pairs_count.pkl', 'swbd_dysf_adjacent_pairs_count.txt')
+    extract_subrules_all()
