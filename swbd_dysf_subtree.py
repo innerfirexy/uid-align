@@ -135,10 +135,31 @@ def extract_subrules_all():
         sys.stdout.flush()
     conn.commit()
 
+# obtain the frequency of subrules
+def subrules_freq(output_file):
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # select all data
+    sql = 'select subRules from entropy_disf where subRules <> \'\'' # non-empty
+    cur.execute(sql)
+    data = cur.fetchall()
+    # count freq
+    count = FreqDist()
+    for item in data:
+        rules = item[0].split('~~~+~~~')
+        for r in rules:
+            count[r] += 1
+    # save to R-friendly format
+    with open(output_file, 'w') as fw:
+        for key, val in count.items():
+            fw.write(key + ', ' + str(val) + '\n')
+
 
 # main
 if __name__ == '__main__':
     # find_adj_pairs('swbd_dysf_adjacent_pairs.pkl')
     # count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
     # reformat_count_result('swbd_dysf_adjacent_pairs_count.pkl', 'swbd_dysf_adjacent_pairs_count.txt')
-    extract_subrules_all()
+    # extract_subrules_all()
+    subrules_freq('all_subrules_freq.txt')
