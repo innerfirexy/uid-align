@@ -5,6 +5,8 @@
 import MySQLdb
 import sys
 import pickle
+import itertools
+import re
 
 from nltk.tree import *
 from nltk.probability import FreqDist
@@ -69,17 +71,39 @@ def find_adj_pairs(data_file):
     pickle.dump(result, open(data_file, 'wb'))
 
 # count repeated subrules between adjacent speakers, using the pair info saved in data_file
-def count_rules(data_file):
-    assert isinstance(data_file, str)
+def count_rules(input_file, output_file):
+    assert isinstance(input_file, str)
+    assert isinstance(output_file, str)
     # db conn
     conn = db_conn('swbd')
     cur = conn.cursor()
-    # select data
-    meta_info = pickle.load(open(data_file, 'rb'))
-    sql = 'select convID, '
-    pass
+    # load data file
+    meta_info = pickle.load(open(input_file, 'rb'))
+    # process each entry (conv_id) in meta_info
+    count_dict = FreqDist()
+    for i, c_id in enumerate(meta_info.keys()):
+        for pair in meta_info[c_id]:
+            # select all sentences for prime (pair[0])
+            sql = 'select parsedFull from entropy_disf where convID = %s and turnID = %s'
+            cur.execute(sql, (c_id, pair[0]))
+            prime_rules = map(subrules, [item[0] for item in cur.fetchall()])
+            prime_rules = list(itertools.chain.from_iterable(prime_rules))
+            # select all sentences for target (pair[1])
+            sql = 'select parsedFull from entropy_disf where convID = %s and turnID = %s'
+            cur.execute(sql, (c_id, pair[1]))
+            target_rules = map(subrules, [item[0] for item in cur.fetchall()])
+            target_rules = list(itertools.chain.from_iterable(target_rules))
+            # update count_dict
+            for r in set(prime_rules) & set(target_rules):
+                count_dict[r] += 1
+        # print
+        sys.stdout.write('\r{}/{} convID counted'.format(i+1, len(meta_info.keys())))
+        sys.stdout.flush()
+    # save to file
+    pickle.dump(count_dict, open(output_file, 'wb'))
 
 
 # main
 if __name__ == '__main__':
-    find_adj_pairs('swbd_dysf_adjacent_pairs.pkl')
+    # find_adj_pairs('swbd_dysf_adjacent_pairs.pkl')
+    count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
