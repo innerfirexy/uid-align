@@ -7,6 +7,7 @@ import sys
 import pickle
 import itertools
 import re
+import math
 
 from nltk.tree import *
 from nltk.probability import FreqDist
@@ -155,6 +156,104 @@ def subrules_freq(output_file):
         for key, val in count.items():
             fw.write(key + ', ' + str(val) + '\n')
 
+# create a dict that has (convID, turnID) as keys, and all subrules within as values
+# all turnIDs from the entropy_disf table are included
+def turn_subrules_dict(output_file):
+    assert isinstance(output_file, str)
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # select all unique (convID, turnID) pairs from table
+    sql = 'select distinct convID, turnID from entropy_disf' # where subRules <> \'\'
+    cur.execute(sql)
+    all_keys = [(row[0], row[1]) for row in cur.fetchall()]
+    # create dict
+    result_dict = {}
+    for i, key in enumerate(all_keys):
+        sql = 'select subRules from entropy_disf where convID = %s and turnID = %s'
+        cur.execute(sql, (key[0], key[1]))
+        sents = [row[0] for row in cur.fetchall()]
+        rules = []
+        for s in sents:
+            rules += s.split('~~~+~~~')
+        result_dict[key] = rules
+        # print
+        sys.stdout.write('\r{}/{} keys inserted'.format(i+1, len(all_keys)))
+        sys.stdout.flush()
+    # save to file
+    pickle.dump(result_dict, open(output_file, 'wb'))
+
+# the function that computes the prior probability of a rule appearing in a turn
+def prior(r_dict, rule):
+    assert isinstance(r_dict, dict)
+    assert isinstance(rule, str)
+    count = 0
+    for key, val in r_dict.items():
+        if rule in val:
+            count += 1
+    return float(count) / len(r_dict)
+
+# the function that computes the probability boost for given list of subrules
+def probBoost(p_dict, r_dict, rule, method='log-odds'):
+    assert isinstance(p_dict, dict)
+    assert isinstance(r_dict, dict)
+    assert isinstance(rule, str)
+    assert method in ['log-odds', 'diff']
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # considering all (prime, target) pairs, count the number of pairs whose prime contains rule
+    # and the number of pairs whose prime and target both contains rule
+    count_pair = 0
+    count_t = 0
+    count_p = 0
+    count_pt = 0
+    for key, val in p_dict.items():
+        for p_turn, t_turn in val:
+            count_pair += 1
+            if rule in r_dict[(key, t_turn)]:
+                count_t += 1
+            if rule in r_dict[(key, p_turn)]:
+                count_p += 1
+                if rule in r_dict[(key, t_turn)]:
+                    count_pt += 1
+    if count_p == 0:
+        return None
+    prob = float(count_pt) / count_p
+    # compute prior probability
+    # prior_prob = prior(r_dict, rule)
+    prior_prob = float(count_t) / count_pair
+    if prior_prob == 0:
+        return None
+    # calculate probability boost
+    if method == 'log-odds':
+        if prior_prob != 0:
+            return math.log(prob / prior_prob)
+        else:
+            return float('inf')
+    else:
+        return prob - prior_prob
+
+# experiment
+def exp():
+    # load pairs_dict and rules_dict
+    pairs_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
+    rules_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
+    # target rules
+    target_rules = ['NP -> PRP', 'S -> NP VP', 'PP -> IN NP', 'ADVP -> RB', 'S -> VP', 'SBAR -> S', 'NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'SBAR -> IN S', \
+        'NP -> NP SBAR', 'VP -> TO VP', 'NP -> DT', 'NP -> NNS', 'SBAR -> WHNP S', 'VP -> MD VP', 'VP -> VB NP', 'VP -> VBP SBAR', 'VP -> VBP VP', 'S -> S CC S']
+    # compute the probability boost for each rule
+    pb_results = []
+    for i, rule in enumerate(target_rules):
+        pb_results.append((rule, probBoost(pairs_dict, rules_dict, rule, method='log-odds')))
+        sys.stdout.write('\r{}/{} rules computed'.format(i+1, len(target_rules)))
+        sys.stdout.flush()
+    # save results
+    with open('pb_results_20.txt', 'w') as fw:
+        for row in pb_results:
+            fw.write(row[0] + ', ' + str(row[1]) + '\n')
+
+
 
 # main
 if __name__ == '__main__':
@@ -162,4 +261,6 @@ if __name__ == '__main__':
     # count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
     # reformat_count_result('swbd_dysf_adjacent_pairs_count.pkl', 'swbd_dysf_adjacent_pairs_count.txt')
     # extract_subrules_all()
-    subrules_freq('all_subrules_freq.txt')
+    # subrules_freq('all_subrules_freq.txt')
+    # turn_subrules_dict('turn_subrules_dict.pkl')
+    exp()
