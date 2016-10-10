@@ -1,3 +1,4 @@
+#!python3
 # extract subtrees from the ``parsedFull`` column in ``entropy_disf`` table from the swbd db
 # Yang Xu
 # 10/2/2016
@@ -234,8 +235,11 @@ def probBoost(p_dict, r_dict, rule, method='log-odds'):
     else:
         return prob - prior_prob
 
-# experiment
-def exp():
+# count the number of subrules in specified pairs
+
+
+# experiment that computes the probability boost
+def exp_probBoost():
     # load pairs_dict and rules_dict
     pairs_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
     rules_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
@@ -253,6 +257,10 @@ def exp():
         for row in pb_results:
             fw.write(row[0] + ', ' + str(row[1]) + '\n')
 
+# experiment that counts the number of pairs, in which a specified rule only occurs once in prime and target
+def exp_unq_occur():
+    pass
+
 
 
 # main
@@ -263,4 +271,4 @@ if __name__ == '__main__':
     # extract_subrules_all()
     # subrules_freq('all_subrules_freq.txt')
     # turn_subrules_dict('turn_subrules_dict.pkl')
-    exp()
+    exp_probBoost()
