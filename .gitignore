@@ -1,2 +1,3 @@
 *.pkl
 .Rapp.history
+__pycache__

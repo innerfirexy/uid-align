@@ -12,6 +12,7 @@ import math
 
 from nltk.tree import *
 from nltk.probability import FreqDist
+import nltk_tgrep
 
 
 # get db connection
@@ -195,14 +196,11 @@ def prior(r_dict, rule):
     return float(count) / len(r_dict)
 
 # the function that computes the probability boost for given list of subrules
-def probBoost(p_dict, r_dict, rule, method='log-odds'):
+def probBoost(p_dict, r_dict, rule, method='log-odds', verbose=False):
     assert isinstance(p_dict, dict)
     assert isinstance(r_dict, dict)
     assert isinstance(rule, str)
     assert method in ['log-odds', 'diff']
-    # db conn
-    conn = db_conn('swbd')
-    cur = conn.cursor()
     # considering all (prime, target) pairs, count the number of pairs whose prime contains rule
     # and the number of pairs whose prime and target both contains rule
     count_pair = 0
@@ -218,6 +216,13 @@ def probBoost(p_dict, r_dict, rule, method='log-odds'):
                 count_p += 1
                 if rule in r_dict[(key, t_turn)]:
                     count_pt += 1
+    # print info for verbose mode
+    if verbose:
+        print('total pairs: {}'.format(count_pair))
+        print('# in target: {}'.format(count_t))
+        print('# in prime: {}'.format(count_p))
+        print('# in both: {}'.format(count_pt))
+    # return
     if count_p == 0:
         return None
     prob = float(count_pt) / count_p
@@ -257,9 +262,80 @@ def exp_probBoost():
         for row in pb_results:
             fw.write(row[0] + ', ' + str(row[1]) + '\n')
 
-# experiment that counts the number of pairs, in which a specified rule only occurs once in prime and target
-def exp_unq_occur():
+
+# the func that counts the number of pairs, in which a specified rule only occurs once in prime and target
+def count_unq_occur(p_dict, r_dict, rule, verbose=False):
+    """
+    find all the pairs where the specified rule only occurs once in both prime and target
+    return: a list of (conv_id, turn_id) keys used to retrieve the full parsetree in later tasks
+    """
+    assert isinstance(p_dict, dict)
+    assert isinstance(r_dict, dict)
+    assert isinstance(rule, str)
+    result = []
+    count = 0
+    for key, val in p_dict.items():
+        for pair in val:
+            new_key1 = (key, pair[0])
+            new_key2 = (key, pair[1])
+            if r_dict[new_key1].count(rule) == 1 and r_dict[new_key2].count(rule) == 1:
+                result.append(new_key1)
+                result.append(new_key2)
+                count += 1
+    result = list(set(result))
+    # print verbose info
+    if verbose:
+        print('# of atom pairs: {}'.format(count))
+    return result
+
+# experiment with the number of pairs, where rule appears in prime and target for once
+def exp_occur():
+    # load pairs_dict and rules_dict
+    p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
+    r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
+    # target rules
+    target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
+    # print info
+    for rule in target_rules:
+        print(rule)
+        # probBoost(p_dict, r_dict, rule, verbose=True)
+        res = count_unq_occur(p_dict, r_dict, rule, verbose=True)
+        print(len(res))
+
+
+# prepare the full parsetree dict for future use
+def turn_parsetree_dict(output_file):
+    assert isinstance(output_file, str)
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # select data
+    sql = 'select convID, turnID, parsedFull from entropy_disf'
+    
     pass
+
+# the func that gets the terminal nodes from a tree, filtered by the tgrep pattern
+def term_nodes(tree_str, pattern):
+    """
+    tree_str: the string of a phrase structure parse tree
+    pattern: the tgrep pattern
+    return: a list of string of the terminal nodes (leaves)
+    """
+    assert isinstance(tree_str, str)
+    assert isinstance(pattern, str)
+    try:
+        tree = ParentedTree.fromstring(tree_str)
+    except Exception as e:
+        print('error in constructing tree')
+        raise
+    else:
+        res = nltk_tgrep.tgrep_nodes(tree, pattern)
+        res_str = [' '.join(t.leaves()) for t in res]
+        return res_str
+
+# experiment with term_nodes
+def exp_term_nodes():
+    print(term_nodes('(S (NP (DT the) (JJ big) (NN dog)) (VP bit) (NP (DT a) (NN cat)))', 'NP'))
 
 
 
@@ -271,4 +347,6 @@ if __name__ == '__main__':
     # extract_subrules_all()
     # subrules_freq('all_subrules_freq.txt')
     # turn_subrules_dict('turn_subrules_dict.pkl')
-    exp_probBoost()
+    # exp_probBoost()
+    # exp_occur()
+    exp_term_nodes()
