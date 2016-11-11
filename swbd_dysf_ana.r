@@ -52,14 +52,21 @@ dt.ss.p = melt(dt.ss, id.vars = 'rule')
 p = ggplot(dt.ss.p, aes(x = rule, y = value, group = variable)) +
     geom_point(aes(shape = variable, color = variable)) +
     geom_line(aes(lty = variable, color = variable)) +
-    scale_linetype_manual(values = c(2, 1)) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    scale_linetype_manual(values = c(2, 1),
+        name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    scale_color_discrete(name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    scale_shape_discrete(name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position=c(.4, .8))
 
 pdf('probBoost_vs_prior_10.pdf', 5, 5)
 plot(p)
 dev.off()
 
 # include the most frequent 20 rules
+setorder(dt2, -priorCount)
 dt.ss2 = dt2[1:20, .(rule, priorFreq)]
 dt.ss2$rule = as.character(dt.ss2$rule)
 dt.ss2$rule = factor(dt.ss2$rule, levels = dt.ss2$rule)
@@ -72,8 +79,14 @@ dt.ss2.p = melt(dt.ss2, id.vars = 'rule')
 p = ggplot(dt.ss2.p, aes(x = rule, y = value, group = variable)) +
     geom_point(aes(shape = variable, color = variable)) +
     geom_line(aes(lty = variable, color = variable)) +
-    scale_linetype_manual(values = c(2, 1)) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    scale_linetype_manual(values = c(2, 1),
+        name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    scale_color_discrete(name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    scale_shape_discrete(name = 'Type', breaks = c('priorFreq', 'probBoost'),
+        labels = c('prior probability', 'probability boost')) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position=c(.2, .8))
 
 pdf('probBoost_vs_prior_20.pdf', 10, 5)
 plot(p)
