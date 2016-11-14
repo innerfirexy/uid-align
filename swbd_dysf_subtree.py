@@ -49,8 +49,8 @@ def subrules(tree_str, exclude = None):
     return rules
 
 # find adjacent pairs (adjacent turnIDs and different speakers)
-def find_adj_pairs(data_file):
-    assert isinstance(data_file, str)
+def find_adj_pairs(output_file):
+    assert isinstance(output_file, str)
     # db conn
     conn = db_conn('swbd')
     cur = conn.cursor()
@@ -71,9 +71,9 @@ def find_adj_pairs(data_file):
         sys.stdout.write('\r{}/{} convID counted'.format(i+1, len(conv_ids)))
         sys.stdout.flush()
     # save result
-    pickle.dump(result, open(data_file, 'wb'))
+    pickle.dump(result, open(output_file, 'wb'))
 
-# count repeated subrules between adjacent speakers, using the pair info saved in data_file
+# count repeated subrules between adjacent speakers, using the pair info saved in input_file
 def count_rules(input_file, output_file):
     assert isinstance(input_file, str)
     assert isinstance(output_file, str)
@@ -158,6 +158,7 @@ def subrules_freq(output_file):
         for key, val in count.items():
             fw.write(key + ', ' + str(val) + '\n')
 
+
 # create a dict that has (convID, turnID) as keys, and all subrules within as values
 # all turnIDs from the entropy_disf table are included
 def turn_subrules_dict(output_file):
@@ -184,6 +185,21 @@ def turn_subrules_dict(output_file):
         sys.stdout.flush()
     # save to file
     pickle.dump(result_dict, open(output_file, 'wb'))
+
+##
+# map from (conv_id, turn_id) to the list of tuples [(subrules, parsetree), ...]
+# each tuple in the list corresponds to a complete sentence
+def subrules_parsetree_map():
+    pass
+
+##
+# find the parsetree of a given subrule, and its conv_id, turn_id
+# locate the list [(subrules, parsetree)] by (conv_id, turn_id), and scan through the list
+# and return all the parsetrees that contains the given subrule
+def find_parsetree():
+    pass
+
+
 
 # the function that computes the prior probability of a rule appearing in a turn
 def prior(r_dict, rule):
@@ -263,30 +279,49 @@ def exp_probBoost():
             fw.write(row[0] + ', ' + str(row[1]) + '\n')
 
 
-# the func that counts the number of pairs, in which a specified rule only occurs once in prime and target
-def count_unq_occur(p_dict, r_dict, rule, verbose=False):
+##
+# the func that counts the number of pairs that satisfy certain conditions:
+# a rule's occurrance in prime is limited by prime_min and prime_max
+# and its occurrance in target is limited by target_min and target_max
+def count_occur(pair_dict, rule_dict, rule, prime_min, target_min, prime_max=float('inf'), target_max=float('inf')):
     """
-    find all the pairs where the specified rule only occurs once in both prime and target
-    return: a list of (conv_id, turn_id) keys used to retrieve the full parsetree in later tasks
+    return: a list of tuple, in which the tuple is itself a triple tuple: [(conv_id, prime_turn_id, target_turn_id), ...]
     """
-    assert isinstance(p_dict, dict)
-    assert isinstance(r_dict, dict)
+    assert isinstance(pair_dict, dict)
+    assert isinstance(rule_dict, dict)
     assert isinstance(rule, str)
+    assert (isinstance(prime_max, int) or isinstance(prime_max, float)) and prime_max >= 0
+    assert isinstance(prime_min, int) and prime_min >= 0
+    assert prime_max >= prime_min
+    assert (isinstance(target_max, int) or isinstance(target_max, float)) and target_max >= 0
+    assert isinstance(target_min, int) and target_min >= 0
+    assert target_max >= target_min
+
     result = []
-    count = 0
-    for key, val in p_dict.items():
+    for key, val in pair_dict.items():
         for pair in val:
-            new_key1 = (key, pair[0])
-            new_key2 = (key, pair[1])
-            if r_dict[new_key1].count(rule) == 1 and r_dict[new_key2].count(rule) == 1:
-                result.append(new_key1)
-                result.append(new_key2)
-                count += 1
-    result = list(set(result))
+            prime_count = rule_dict[(key, pair[0])].count(rule)
+            target_count = rule_dict[(key, pair[1])].count(rule)
+            if prime_count >= prime_min and prime_count <= prime_max and target_count >= target_min and target_count <= target_max:
+                result.append((key, pair[0], pair[1]))
+    return result
+
+
+# the func that counts the number of pairs, in which a specified rule
+# occurs EXACTLY ONCE in prime and target
+# it is a special case of count_occur
+def count_occur_once(pair_dict, rule_dict, rule, verbose=False):
+    """
+    find all the pairs where the specified rule occurs exactly once in both prime and target respectively
+    return: [(conv_id, prime_turn_id, target_turn_id), ...]
+    """
+    result = count_occur(pair_dict, rule_dict, rule, prime_min=1, target_min=1, prime_max=1, target_max=1)
     # print verbose info
     if verbose:
-        print('# of atom pairs: {}'.format(count))
+        print(rule)
+        print('# of qualified pairs: {}'.format(len(result)))
     return result
+
 
 # experiment with the number of pairs, where rule appears in prime and target for once
 def exp_occur():
@@ -294,13 +329,19 @@ def exp_occur():
     p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
     r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
     # target rules
-    target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
+    # target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
+    target_rules = ['NP -> DT JJ NN']
     # print info
+    print('one on one repeat')
     for rule in target_rules:
-        print(rule)
         # probBoost(p_dict, r_dict, rule, verbose=True)
-        res = count_unq_occur(p_dict, r_dict, rule, verbose=True)
-        print(len(res))
+        res = count_occur_once(p_dict, r_dict, rule, verbose=True)
+    # more than one repeat
+    print('multiple on multiple repeat')
+    for rule in target_rules:
+        res = count_occur(p_dict, r_dict, rule, prime_min=2, target_min=2)
+        print(rule)
+        print('# of qualified pairs: {}'.format(len(res)))
 
 
 # prepare the full parsetree dict for future use
@@ -311,11 +352,11 @@ def turn_parsetree_dict(output_file):
     cur = conn.cursor()
     # select data
     sql = 'select convID, turnID, parsedFull from entropy_disf'
-    
+
     pass
 
 # the func that gets the terminal nodes from a tree, filtered by the tgrep pattern
-def term_nodes(tree_str, pattern):
+def terminal_nodes(tree_str, pattern):
     """
     tree_str: the string of a phrase structure parse tree
     pattern: the tgrep pattern
@@ -333,9 +374,19 @@ def term_nodes(tree_str, pattern):
         res_str = [' '.join(t.leaves()) for t in res]
         return res_str
 
-# experiment with term_nodes
+# experiment with terminal_nodes
 def exp_term_nodes():
-    print(term_nodes('(S (NP (DT the) (JJ big) (NN dog)) (VP bit) (NP (DT a) (NN cat)))', 'NP'))
+    # print(terminal_nodes('(S (NP (DT the) (JJ big) (NN dog)) (VP bit) (NP (DT a) (NN cat)))', 'NP < (DT.NN)'))
+    # NP -> NN JJ NP
+    p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
+    r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
+
+    res = count_occur_once(p_dict, r_dict, 'NP -> DT JJ NN')
+    fw = open('NP<(NN.JJ.NP).txt', 'w')
+    for item in res:
+        conv_id, prime_turn_id, target_turn_id = item
+
+
 
 
 
@@ -345,8 +396,11 @@ if __name__ == '__main__':
     # count_rules('swbd_dysf_adjacent_pairs.pkl', 'swbd_dysf_adjacent_pairs_count.pkl')
     # reformat_count_result('swbd_dysf_adjacent_pairs_count.pkl', 'swbd_dysf_adjacent_pairs_count.txt')
     # extract_subrules_all()
+
     # subrules_freq('all_subrules_freq.txt')
     # turn_subrules_dict('turn_subrules_dict.pkl')
     # exp_probBoost()
-    # exp_occur()
-    exp_term_nodes()
+
+    # experiment
+    exp_occur()
+    # exp_term_nodes()
