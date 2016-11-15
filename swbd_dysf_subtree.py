@@ -9,6 +9,7 @@ import pickle
 import itertools
 import re
 import math
+import csv
 
 from nltk.tree import *
 from nltk.probability import FreqDist
@@ -187,18 +188,63 @@ def turn_subrules_dict(output_file):
     pickle.dump(result_dict, open(output_file, 'wb'))
 
 ##
-# map from (conv_id, turn_id) to the list of tuples [(subrules, parsetree), ...]
+# construct the dict that maps from (conv_id, turn_id) to the list of tuples [(subrules, parsetree), ...]
 # each tuple in the list corresponds to a complete sentence
-def subrules_parsetree_map():
-    pass
+# save the dict to the output_file
+def subrules_parsetree_map(out_file):
+    assert isinstance(out_file, str)
+    # db conn
+    conn = db_conn('swbd')
+    cur = conn.cursor()
+    # select all unique (convID, turnID) pairs from table
+    sql = 'select distinct convID, turnID from entropy_disf' # where subRules <> \'\'
+    cur.execute(sql)
+    all_keys = [(row[0], row[1]) for row in cur.fetchall()]
+    # construct dict
+    result = {}
+    for i, key in enumerate(all_keys):
+        sql = 'select parsedFull, subRules from entropy_disf where convID = %s and turnID = %s'
+        cur.execute(sql, (key[0], key[1]))
+        tmp_data = cur.fetchall()
+        tmp_list = []
+        for row in tmp_data:
+            tree_str, rules_str = row
+            rules = rules_str.split('~~~+~~~')
+            tmp_list.append((rules, tree_str))
+        result[key] = tmp_list
+        # print
+        sys.stdout.write('\r{}/{} keys inserted'.format(i+1, len(all_keys)))
+        sys.stdout.flush()
+    # save to file
+    pickle.dump(result, open(out_file, 'wb'))
+
 
 ##
 # find the parsetree of a given subrule, and its conv_id, turn_id
 # locate the list [(subrules, parsetree)] by (conv_id, turn_id), and scan through the list
 # and return all the parsetrees that contains the given subrule
-def find_parsetree():
-    pass
-
+def find_parsetree(map_dict, conv_id, turn_id, rule):
+    """
+    map_dict: the resulting dict returned by subrules_parsetree_map
+    return: the parse tree that contains the rule
+    """
+    assert isinstance(map_dict, dict)
+    if (conv_id, turn_id) not in map_dict:
+        return None
+    data = map_dict[(conv_id, turn_id)]
+    if len(data) == 0:
+        return None
+    # loop over data
+    matches = []
+    for subrules, parsetree in data:
+        if rule in subrules:
+            matches.append(parsetree)
+    if len(matches) == 0:
+        return None
+    elif len(matches) == 1:
+        return matches[0]
+    else:
+        return matches
 
 
 # the function that computes the prior probability of a rule appearing in a turn
@@ -344,17 +390,6 @@ def exp_occur():
         print('# of qualified pairs: {}'.format(len(res)))
 
 
-# prepare the full parsetree dict for future use
-def turn_parsetree_dict(output_file):
-    assert isinstance(output_file, str)
-    # db conn
-    conn = db_conn('swbd')
-    cur = conn.cursor()
-    # select data
-    sql = 'select convID, turnID, parsedFull from entropy_disf'
-
-    pass
-
 # the func that gets the terminal nodes from a tree, filtered by the tgrep pattern
 def terminal_nodes(tree_str, pattern):
     """
@@ -380,11 +415,25 @@ def exp_term_nodes():
     # NP -> NN JJ NP
     p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
     r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
+    r2t_dict = pickle.load(open('subrules_parsetree_dict.pkl', 'rb'))
 
     res = count_occur_once(p_dict, r_dict, 'NP -> DT JJ NN')
-    fw = open('NP<(NN.JJ.NP).txt', 'w')
-    for item in res:
+    parsetrees = []
+    for i, item in enumerate(res):
         conv_id, prime_turn_id, target_turn_id = item
+        prime_tree = ''
+        target_tree = ''
+        if i > 0 and prime_turn_id == res[i-1][2]:
+            prime_tree = parsetrees[-1][-1]
+        else:
+            prime_tree = find_parsetree(r2t_dict, conv_id, prime_turn_id, 'NP -> DT JJ NN')
+            target_tree = find_parsetree(r2t_dict, conv_id, target_turn_id, 'NP -> DT JJ NN')
+        parsetrees.append((conv_id, prime_turn_id, target_turn_id, prime_tree, target_tree))
+    #
+    with open('NP<(NN.JJ.NP).csv', 'w', newline='') as fw:
+        reswriter = csv.writer(fw, delimiter='\t')
+        for row in parsetrees:
+            reswriter.writerow(row)
 
 
 
@@ -402,5 +451,6 @@ if __name__ == '__main__':
     # exp_probBoost()
 
     # experiment
-    exp_occur()
-    # exp_term_nodes()
+    # subrules_parsetree_map('subrules_parsetree_dict.pkl')
+    # exp_occur()
+    exp_term_nodes()
