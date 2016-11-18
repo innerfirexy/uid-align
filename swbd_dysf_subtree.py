@@ -342,7 +342,7 @@ def count_occur(pair_dict, rule_dict, rule, prime_min, target_min, prime_max=flo
     assert (isinstance(target_max, int) or isinstance(target_max, float)) and target_max >= 0
     assert isinstance(target_min, int) and target_min >= 0
     assert target_max >= target_min
-
+    #
     result = []
     for key, val in pair_dict.items():
         for pair in val:
@@ -409,34 +409,72 @@ def terminal_nodes(tree_str, pattern):
         res_str = [' '.join(t.leaves()) for t in res]
         return res_str
 
-# experiment with terminal_nodes
-def exp_term_nodes():
+##
+# find the terminal nodes of a given rule
+def find_rule_nodes(rule, pattern):
+    """
+    rule: a syntactic subtree in the form of 'NP -> DT JJ NN'
+    pattern: the corresponding tgrep pattern of rule, e.g., 'NP<(NN.JJ.NP)'
+    return: a list of tuples containing terminal nodes
+    """
     # print(terminal_nodes('(S (NP (DT the) (JJ big) (NN dog)) (VP bit) (NP (DT a) (NN cat)))', 'NP < (DT.NN)'))
     # NP -> NN JJ NP
     p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
     r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
     r2t_dict = pickle.load(open('subrules_parsetree_dict.pkl', 'rb'))
 
-    res = count_occur_once(p_dict, r_dict, 'NP -> DT JJ NN')
-    parsetrees = []
+    res = count_occur_once(p_dict, r_dict, rule)
+    nodes = []
+
     for i, item in enumerate(res):
         conv_id, prime_turn_id, target_turn_id = item
-        prime_tree = ''
-        target_tree = ''
-        if i > 0 and prime_turn_id == res[i-1][2]:
-            prime_tree = parsetrees[-1][-1]
-        else:
-            prime_tree = find_parsetree(r2t_dict, conv_id, prime_turn_id, 'NP -> DT JJ NN')
-            target_tree = find_parsetree(r2t_dict, conv_id, target_turn_id, 'NP -> DT JJ NN')
-        parsetrees.append((conv_id, prime_turn_id, target_turn_id, prime_tree, target_tree))
-    #
-    with open('NP<(NN.JJ.NP).csv', 'w', newline='') as fw:
+        prime_tree = find_parsetree(r2t_dict, conv_id, prime_turn_id, rule)
+        target_tree = find_parsetree(r2t_dict, conv_id, target_turn_id, rule)
+        # get nodes
+        prime_nodes = terminal_nodes(prime_tree, pattern)
+        target_nodes = terminal_nodes(target_tree, pattern)
+        nodes.append((prime_nodes, target_nodes))
+
+    return nodes
+
+##
+# find the complete parse tree that contains a certain rule
+def find_rule_tree(rule, pattern):
+    """
+    rule: a syntactic subtree in the form of 'NP -> DT JJ NN'
+    pattern: the corresponding tgrep pattern of rule, e.g., 'NP<(NN.JJ.NP)'
+    return: a list of tuples that contain subtrees, i.e., [(prime_tree, target_tree)]
+    """
+    p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
+    r_dict = pickle.load(open('turn_subrules_dict.pkl', 'rb'))
+    r2t_dict = pickle.load(open('subrules_parsetree_dict.pkl', 'rb'))
+
+    res = count_occur_once(p_dict, r_dict, rule)
+    parsetree = []
+
+    for i, item in enumerate(res):
+        conv_id, prime_turn_id, target_turn_id = item
+        prime_tree = find_parsetree(r2t_dict, conv_id, prime_turn_id, rule)
+        target_tree = find_parsetree(r2t_dict, conv_id, target_turn_id, rule)
+        parsetree.append((prime_tree, target_tree))
+
+    return parsetree
+
+
+##
+# experiment with find_rule_nodes and find_rule_tree
+def exp_nodes():
+    # target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
+    # print(len(find_rule_nodes('NP -> NP PP', pattern='NP<(NP.PP)')))
+
+    nodes = find_rule_tree('NP -> NP PP', pattern='NP<(NP.PP)')
+    with open('NP<(NN.PP).csv', 'w', newline='') as fw:
         reswriter = csv.writer(fw, delimiter='\t')
-        for row in parsetrees:
+        for row in nodes:
             reswriter.writerow(row)
 
-
-
+##
+#
 
 
 # main
@@ -453,4 +491,4 @@ if __name__ == '__main__':
     # experiment
     # subrules_parsetree_map('subrules_parsetree_dict.pkl')
     # exp_occur()
-    exp_term_nodes()
+    exp_nodes()
