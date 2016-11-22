@@ -439,10 +439,9 @@ def find_rule_nodes(rule, pattern):
 
 ##
 # find the complete parse tree that contains a certain rule
-def find_rule_tree(rule, pattern):
+def find_rule_tree(rule):
     """
     rule: a syntactic subtree in the form of 'NP -> DT JJ NN'
-    pattern: the corresponding tgrep pattern of rule, e.g., 'NP<(NN.JJ.NP)'
     return: a list of tuples that contain subtrees, i.e., [(prime_tree, target_tree)]
     """
     p_dict = pickle.load(open('swbd_dysf_adjacent_pairs.pkl', 'rb'))
@@ -464,14 +463,15 @@ def find_rule_tree(rule, pattern):
 ##
 # experiment with find_rule_nodes and find_rule_tree
 def exp_nodes():
-    # target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
-    # print(len(find_rule_nodes('NP -> NP PP', pattern='NP<(NP.PP)')))
+    target_rules = ['NP -> DT NN', 'NP -> NN', 'NP -> NP PP', 'NP -> NP SBAR', 'NP -> DT', 'NP -> NNS']
+    # tregex_patterns = ['NP<(DT.NN)']
 
-    nodes = find_rule_tree('NP -> NP PP', pattern='NP<(NP.PP)')
-    with open('NP<(NN.PP).csv', 'w', newline='') as fw:
-        reswriter = csv.writer(fw, delimiter='\t')
-        for row in nodes:
-            reswriter.writerow(row)
+    for rule in target_rules:
+        trees = find_rule_tree(rule)
+        with open('results/'+rule+'.csv', 'w', newline='') as fw:
+            reswriter = csv.writer(fw, delimiter='\t')
+            for row in trees:
+                reswriter.writerow(row)
 
 ##
 #
